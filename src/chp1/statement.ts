@@ -17,21 +17,40 @@ type Invoice = {
   performances: Performances[];
 };
 
-function statement(invoice: Invoice, plays: Plays) {
-  let result = `Statement for ${invoice.customer}\n`;
-  for (let perf of invoice.performances) {
-    // print line for this order
-    result += ` ${playFor(perf).name}: ${usd(amountFor(perf))} (${
-      perf.audience
-    } seats)\n`;
-  }
-  result += `Amount owed is ${usd(totalAmount())}\n`;
-  result += `You earned ${totalVolumeCredits()} credits\n`;
-  return result;
+type EnrichedPerformances = Performances & {
+  play: Play;
+  amount: number;
+};
 
-  function amountFor(aPerformance: Performances) {
+type StatementData = {
+  customer: Invoice['customer'];
+  performances: EnrichedPerformances[];
+};
+
+function statement(invoice: Invoice, plays: Plays) {
+  const statementData: StatementData = {
+    customer: invoice.customer,
+    performances: invoice.performances.map(enrichPerformance),
+  };
+  return renderPlaintext(statementData);
+
+  function enrichPerformance(aPerformance: Performances) {
+    const result = {
+      ...aPerformance,
+      play: playFor(aPerformance),
+      amount: 0,
+    };
+    return {
+      ...result,
+      amount: amountFor(result)
+    };
+  }
+  function playFor(aPerformance: Performances) {
+    return plays[aPerformance.playID];
+  }
+  function amountFor(aPerformance: EnrichedPerformances) {
     let result = 0;
-    switch (playFor(aPerformance).type) {
+    switch (aPerformance.play.type) {
       case 'tragedy':
         result = 40000;
         if (aPerformance.audience > 30) {
@@ -46,23 +65,30 @@ function statement(invoice: Invoice, plays: Plays) {
         result += 300 * aPerformance.audience;
         break;
       default:
-        throw new Error(`unknown type: ${playFor(aPerformance).type}`);
+        throw new Error(`unknown type: ${aPerformance.play.type}`);
     }
     return result;
   }
+}
 
-  function playFor(aPerformance: Performances) {
-    return plays[aPerformance.playID];
+function renderPlaintext(data: StatementData) {
+  let result = `Statement for ${data.customer}\n`;
+  for (let perf of data.performances) {
+    result += ` ${perf.play.name}: ${usd(perf.amount)} (${
+      perf.audience
+    } seats)\n`;
   }
+  result += `Amount owed is ${usd(totalAmount())}\n`;
+  result += `You earned ${totalVolumeCredits()} credits\n`;
+  return result;
 
-  function volumeCreditsFor(aPerformance: Performances) {
+  function volumeCreditsFor(aPerformance: EnrichedPerformances) {
     let result = 0;
     result += Math.max(aPerformance.audience - 30, 0);
-    if ('comedy' === playFor(aPerformance).type)
+    if ('comedy' === aPerformance.play.type)
       result += Math.floor(aPerformance.audience / 5);
     return result;
   }
-
   function usd(aNumber: number) {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -70,22 +96,19 @@ function statement(invoice: Invoice, plays: Plays) {
       minimumFractionDigits: 2,
     }).format(aNumber / 100);
   }
-
-  //
   function totalVolumeCredits() {
     let result = 0;
-    for (let perf of invoice.performances) {
+    for (let perf of data.performances) {
       result += volumeCreditsFor(perf);
     }
     return result;
   }
-
   function totalAmount() {
     let result = 0;
-    for (let perf of invoice.performances) {
-      result += amountFor(perf)
+    for (let perf of data.performances) {
+      result += perf.amount;
     }
-    return result
+    return result;
   }
 }
 
